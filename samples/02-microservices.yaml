@@ -1,0 +1,116 @@
+# Two namespaces talking to each other, with a NetworkPolicy and quotas.
+# Demonstrates: cross-namespace edges, NetworkPolicy boxes, ResourceQuota/LimitRange.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frontend
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+  namespace: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ui
+  template:
+    metadata:
+      labels:
+        app: ui
+    spec:
+      containers:
+        - name: ui
+          image: nginx:1.27
+          env:
+            - name: API_URL
+              value: http://api.backend.svc.cluster.local:8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+  namespace: frontend
+spec:
+  selector:
+    app: ui
+  ports:
+    - port: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/example/api:1.4.0
+          ports:
+            - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: backend
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-allow-from-frontend
+  namespace: backend
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: frontend
+      ports:
+        - port: 8080
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: backend-quota
+  namespace: backend
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: backend-limits
+  namespace: backend
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi

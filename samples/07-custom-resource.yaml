@@ -1,0 +1,30 @@
+# A cert-manager style CRD and one custom resource that uses it.
+# Demonstrates: CRD box and a custom resource mapped from supplied text.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: certificates.cert.example.io
+spec:
+  group: cert.example.io
+  scope: Namespaced
+  names:
+    kind: Certificate
+    plural: certificates
+    singular: certificate
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+---
+apiVersion: cert.example.io/v1
+kind: Certificate
+metadata:
+  name: web-tls
+  namespace: default
+spec:
+  secretName: web-tls-secret
+  dnsNames:
+    - www.example.com

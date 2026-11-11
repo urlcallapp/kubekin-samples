@@ -1,0 +1,129 @@
+# A small web app in one namespace: config, secret, storage, scaling and ingress.
+# Demonstrates: selects (labels), references (ConfigMap/Secret/PVC/SA/HPA), routes (Ingress).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webshop
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: web
+  namespace: webshop
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+  namespace: webshop
+data:
+  LOG_LEVEL: info
+  THEME: light
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: web-secret
+  namespace: webshop
+type: Opaque
+stringData:
+  api-key: example-not-real
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: webshop
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      serviceAccountName: web
+      containers:
+        - name: web
+          image: nginx:1.27
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: web-config
+          env:
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: web-secret
+                  key: api-key
+          volumeMounts:
+            - name: assets
+              mountPath: /usr/share/nginx/html/assets
+      volumes:
+        - name: assets
+          persistentVolumeClaim:
+            claimName: web-assets
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: web-assets
+  namespace: webshop
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: webshop
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+  namespace: webshop
+spec:
+  rules:
+    - host: webshop.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web
+  namespace: webshop
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

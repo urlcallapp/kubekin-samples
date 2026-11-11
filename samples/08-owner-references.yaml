@@ -1,0 +1,64 @@
+# An explicit ownership chain, all supplied as text: Deployment -> ReplicaSet -> Pod.
+# Demonstrates: solid "owns" arrows from explicit ownerReferences.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: payments
+  uid: 11111111-1111-1111-1111-111111111111
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      containers:
+        - name: checkout
+          image: ghcr.io/example/checkout:2.1.0
+---
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: checkout-7d9f4b6c5
+  namespace: payments
+  uid: 22222222-2222-2222-2222-222222222222
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: checkout
+      uid: 11111111-1111-1111-1111-111111111111
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      containers:
+        - name: checkout
+          image: ghcr.io/example/checkout:2.1.0
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: checkout-7d9f4b6c5-x2k9m
+  namespace: payments
+  uid: 33333333-3333-3333-3333-333333333333
+  labels:
+    app: checkout
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: ReplicaSet
+      name: checkout-7d9f4b6c5
+      uid: 22222222-2222-2222-2222-222222222222
+spec:
+  containers:
+    - name: checkout
+      image: ghcr.io/example/checkout:2.1.0

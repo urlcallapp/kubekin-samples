@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KubeKin Samples</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+         margin: 0; background: #f6f8fa; color: #1f2328; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .sub { color: #59636e; margin: 0 0 20px; }
+  .bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+  button { font: inherit; cursor: pointer; border: 1px solid #d1d9e0; border-radius: 8px;
+           background: #fff; padding: 8px 14px; }
+  button:hover { background: #f0f2f5; }
+  button.primary { background: #1f883d; border-color: #1f883d; color: #fff; font-weight: 600; }
+  button.primary:hover { background: #1a7f37; }
+  .card { background: #fff; border: 1px solid #d1d9e0; border-radius: 10px;
+          padding: 14px 16px; margin-bottom: 12px; }
+  .card h2 { font-size: 16px; margin: 0 0 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .card p { margin: 0 0 10px; color: #59636e; font-size: 14px; }
+  .card .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+         color: #59636e; word-break: break-all; }
+  .copied { color: #1a7f37; font-size: 13px; margin-left: 6px; }
+  .err { background: #fff8c5; border: 1px solid #eac54f; border-radius: 8px; padding: 10px 14px; }
+  a { color: #0969da; }
+  footer { margin-top: 28px; color: #59636e; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>KubeKin Samples</h1>
+  <p class="sub">Example Kubernetes manifests for testing
+    <a href="https://urlcallapp.github.io/kubekin/">KubeKin</a>'s URL import.
+    Paste one or more raw URLs into KubeKin's URL field.</p>
+  <div class="bar">
+    <button class="primary" id="copyAll">Copy all raw links</button>
+    <button id="openKubekin">Open KubeKin</button>
+  </div>
+  <div id="list">Loading samples…</div>
+  <footer>
+    The list is read live from the
+    <a href="https://github.com/urlcallapp/kubekin-samples/tree/main/samples">samples folder</a>:
+    any new <code>.yaml</code> file pushed there appears here automatically.
+  </footer>
+</main>
+<script>
+const OWNER = "urlcallapp", REPO = "kubekin-samples", BRANCH = "main", DIR = "samples", NEGDIR = "negative-tests";
+const rawUrl = (path) =>
+  `https://raw.githubusercontent.com/${OWNER}/${REPO}/${BRANCH}/${path}`;
+
+async function copyText(text, el) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove();
+  }
+  if (el) { el.textContent = "Copied!"; setTimeout(() => (el.textContent = ""), 1500); }
+}
+
+async function fetchDir(dir) {
+  const res = await fetch(
+    `https://api.github.com/repos/${OWNER}/${REPO}/contents/${dir}?ref=${BRANCH}`);
+  if (!res.ok) throw new Error(res.status === 403
+    ? "GitHub API rate limit reached - try again later"
+    : "HTTP " + res.status);
+  const data = await res.json();
+  return data.filter((f) => f.type === "file" && /\.ya?ml$/i.test(f.name))
+             .map((f) => f.name).sort();
+}
+
+function addCard(list, dir, name) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<h2></h2><p></p>
+    <div class="row">
+      <button class="copyRaw">Copy raw link</button>
+      <a class="open" target="_blank" rel="noopener">view</a>
+      <span class="copied"></span>
+    </div>
+    <div class="url"></div>`;
+  const url = rawUrl(dir + "/" + name);
+  card.querySelector("h2").textContent = name;
+  card.querySelector(".url").textContent = url;
+  const a = card.querySelector("a.open");
+  a.href = url; a.textContent = "view raw";
+  card.querySelector(".copyRaw").addEventListener("click", () =>
+    copyText(url, card.querySelector(".copied")));
+  list.appendChild(card);
+  fetch(url).then((r) => (r.ok ? r.text() : "")).then((t) => {
+    const line = (t.split("\n").find((l) => l.startsWith("#")) || "").replace(/^#\s*/, "");
+    card.querySelector("p").textContent = line;
+  }).catch(() => {});
+}
+
+async function load() {
+  const list = document.getElementById("list");
+  let files, negFiles = [];
+  try {
+    files = await fetchDir(DIR);
+    try { negFiles = await fetchDir(NEGDIR); } catch { negFiles = []; }
+  } catch (e) {
+    list.innerHTML = `<div class="err">Could not load the sample list (${e.message}).
+      Browse the <a href="https://github.com/${OWNER}/${REPO}/tree/main/${DIR}">samples folder</a> instead.</div>`;
+    return;
+  }
+  list.textContent = "";
+  if (!files.length) list.appendChild(document.createTextNode("No samples yet."));
+  for (const name of files) addCard(list, DIR, name);
+  if (negFiles.length) {
+    const h = document.createElement("h2");
+    h.style.cssText = "font-size:18px;margin:26px 0 4px";
+    h.textContent = "Negative tests (expected to fail)";
+    const note = document.createElement("p");
+    note.className = "sub";
+    note.textContent = "These files are intentionally broken and are NOT included in Copy all. Use them one at a time to check KubeKin's error handling.";
+    list.appendChild(h); list.appendChild(note);
+    for (const name of negFiles) addCard(list, NEGDIR, name);
+  }
+  document.getElementById("copyAll").addEventListener("click", function () {
+    copyText(files.map((n) => rawUrl(DIR + "/" + n)).join("\n"), null);
+    const b = this; const old = b.dataset.label || (b.dataset.label = b.textContent);
+    b.textContent = "Copied " + files.length + " links!";
+    setTimeout(() => (b.textContent = old), 1500);
+  });
+}
+document.getElementById("openKubekin").onclick = () =>
+  window.open("https://urlcallapp.github.io/kubekin/", "_blank", "noopener");
+load();
+</script>
+</body>
+</html>
